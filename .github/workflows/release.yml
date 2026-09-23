@@ -1,42 +1,80 @@
 name: Release
 
+# The version comes from the app itself: <Version> in TempCleanerWinUI.csproj,
+# which tests/Test-Version.ps1 keeps in step with the Win32 and console builds.
+# Bump that one number, push to main, and this publishes the release.
+
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "build/**"
+      - "tests/**"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to build, for example v2.0.1"
-        required: true
+      force:
+        description: "Republish even if a release for this version already exists"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
+  check:
+    name: Read the version from the app
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      needed: ${{ steps.read.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read <Version> and decide whether to publish
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -oPm1 '(?<=<Version>)[^<]+' src/winui/TempCleanerWinUI.csproj)
+          if [ -z "$version" ]; then
+            echo "No <Version> found in TempCleanerWinUI.csproj" >&2
+            exit 1
+          fi
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Forced rebuild of $tag."
+          elif gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is already released. Bump <Version> to publish a new one."
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "$tag has no release yet, building it."
+          fi
+
   release:
     name: Build, package and publish
+    needs: check
+    if: needs.check.outputs.needed == 'true'
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Work out the version
-        id: version
-        shell: pwsh
-        run: |
-          $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            "${{ github.event.inputs.version }}"
-          } else {
-            "${{ github.ref_name }}"
-          }
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "plain=$($version.TrimStart('v'))" >> $env:GITHUB_OUTPUT
-          Write-Host "Building $version"
-
       - name: Set up .NET 9
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "9.0.x"
+
+      - name: Check every build reports the same version
+        shell: pwsh
+        run: .\tests\Test-Version.ps1
 
       - name: Build native scanner and Win32 app (MSVC)
         shell: cmd
@@ -48,7 +86,7 @@ jobs:
 
       - name: Build WinUI 3 app
         shell: cmd
-        run: dotnet build src\winui -c Release -r win-x64 -p:Version=${{ steps.version.outputs.plain }}
+        run: dotnet build src\winui -c Release -r win-x64
 
       - name: Run the test suite
         shell: pwsh
@@ -58,24 +96,27 @@ jobs:
 
       - name: Package
         shell: pwsh
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
-          $v = "${{ steps.version.outputs.version }}"
+          $tag = $env:TAG
           New-Item -ItemType Directory release -Force | Out-Null
 
-          # WinUI: the whole folder, it is self contained and needs no runtime.
+          # WinUI: the whole folder, self contained, no runtime needed.
           $winui = "src\winui\bin\Release\net9.0-windows10.0.26100.0\win-x64"
           Copy-Item README.md, LICENSE $winui
-          Compress-Archive -Path "$winui\*" -DestinationPath "release\WinSweep-WinUI-$v-win-x64.zip"
+          Compress-Archive -Path "$winui\*" -DestinationPath "release\WinSweep-WinUI-$tag-win-x64.zip"
 
           # Win32: one exe, no runtime at all.
           New-Item -ItemType Directory staging\win32 -Force | Out-Null
           Copy-Item dist\TempCleanerPro.exe, README.md, LICENSE staging\win32
-          Compress-Archive -Path "staging\win32\*" -DestinationPath "release\WinSweep-Win32-$v.zip"
+          Compress-Archive -Path "staging\win32\*" -DestinationPath "release\WinSweep-Win32-$tag.zip"
 
-          # Console: the batch file on its own.
+          # Console: the script, its icon and the shortcut helper.
           New-Item -ItemType Directory staging\console -Force | Out-Null
-          Copy-Item src\batch\TempCleaner.bat, README.md, LICENSE staging\console
-          Compress-Archive -Path "staging\console\*" -DestinationPath "release\WinSweep-Console-$v.zip"
+          Copy-Item src\batch\TempCleaner.bat, src\batch\TempCleaner.ico, `
+                    src\batch\Create-Shortcut.ps1, README.md, LICENSE staging\console
+          Compress-Archive -Path "staging\console\*" -DestinationPath "release\WinSweep-Console-$tag.zip"
 
           Get-FileHash release\*.zip -Algorithm SHA256 |
             ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
@@ -85,10 +126,12 @@ jobs:
 
       - name: Write the release notes
         shell: pwsh
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
-          $v = "${{ steps.version.outputs.version }}"
+          $tag = $env:TAG
           @"
-          ## WinSweep $v
+          ## WinSweep $tag
 
           Pick what goes. Watch it go.
 
@@ -96,14 +139,14 @@ jobs:
 
           | File | What it is | Needs |
           |---|---|---|
-          | ``WinSweep-WinUI-$v-win-x64.zip`` | The full Fluent app. Unzip anywhere and run ``TempCleanerWinUI.exe``. | Windows 10 1809+. Nothing else: self contained, no .NET install, no MSIX, no Developer Mode. |
-          | ``WinSweep-Win32-$v.zip`` | Single-file Win32 app, about 230 KB. | Windows 7+. No runtime. |
-          | ``WinSweep-Console-$v.zip`` | The console version, one .bat file. | Any Windows with cmd. |
+          | ``WinSweep-WinUI-$tag-win-x64.zip`` | The full Fluent app. Unzip anywhere and run ``TempCleanerWinUI.exe``. | Windows 10 1809+. Self contained: no .NET install, no MSIX, no Developer Mode. |
+          | ``WinSweep-Win32-$tag.zip`` | Single-file Win32 app, about 330 KB. | Windows 7+. No runtime. |
+          | ``WinSweep-Console-$tag.zip`` | The console version, plus its icon and a shortcut helper. | Any Windows with cmd. |
 
           Verify a download against ``SHA256SUMS.txt``:
 
           ``````powershell
-          Get-FileHash .\WinSweep-WinUI-$v-win-x64.zip -Algorithm SHA256
+          Get-FileHash .\WinSweep-WinUI-$tag-win-x64.zip -Algorithm SHA256
           ``````
 
           ### Reminders
@@ -112,19 +155,31 @@ jobs:
           - Rows marked **Risk** are never ticked by a preset other than Deep, and the confirmation dialog names every one.
           - Run as administrator to include system locations such as ``C:\Windows\Temp`` and the Windows Update cache.
 
-          See the [wiki](https://github.com/${{ github.repository }}/wiki) for the full catalogue and usage notes.
+          Full catalogue and usage notes: [the wiki](https://github.com/${{ github.repository }}/wiki).
           "@ | Set-Content release\NOTES.md -Encoding utf8
+
+      - name: Tag the commit
+        shell: bash
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$TAG"
+          git push -f origin "$TAG"
 
       - name: Publish the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
-          $v = "${{ steps.version.outputs.version }}"
-          gh release create $v `
-            --title "WinSweep $v" `
+          $tag = $env:TAG
+          if (gh release view $tag 2>$null) { gh release delete $tag --yes --cleanup-tag:$false }
+          gh release create $tag `
+            --title "WinSweep $tag" `
             --notes-file release\NOTES.md `
-            release\WinSweep-WinUI-$v-win-x64.zip `
-            release\WinSweep-Win32-$v.zip `
-            release\WinSweep-Console-$v.zip `
+            release\WinSweep-WinUI-$tag-win-x64.zip `
+            release\WinSweep-Win32-$tag.zip `
+            release\WinSweep-Console-$tag.zip `
             release\SHA256SUMS.txt

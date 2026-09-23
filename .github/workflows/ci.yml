@@ -63,6 +63,10 @@ jobs:
           }
           Write-Host "WinUI output looks complete."
 
+      - name: Check every build reports the same version
+        shell: pwsh
+        run: .\tests\Test-Version.ps1
+
       - name: Test the native scanner
         shell: pwsh
         run: .\tests\Test-NativeScanner.ps1

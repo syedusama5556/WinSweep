@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/icons/winsweep-256.png" width="128" alt="WinSweep">
+
 # WinSweep
 
 ### Pick what goes. Watch it go.
@@ -7,7 +9,7 @@
 A Windows cleaner that shows you the size of every cache **before** it touches anything,
 explains in plain English what each row actually does, and never scans or deletes without a click.
 
-**Three builds, one catalogue:** a Fluent WinUI 3 app, a 230 KB single-file Win32 app,
+**Three builds, one catalogue:** a Fluent WinUI 3 app, a single-file Win32 app under 400 KB,
 and a console version that runs anywhere.
 
 Developer: **infusiblecoder**
@@ -66,13 +68,24 @@ WinSweep does the opposite:
 
 </div>
 
-### Win32 app — one file, 230 KB, no runtime
+### Win32 app — one file, no runtime
 
 ![Win32 app](docs/screenshots/06-win32-app.png)
 
 ### Console version — tabs and progress bars in plain cmd
 
 ![Batch version](docs/screenshots/07-batch-console.png)
+
+### Icons
+
+One mark, three accents: blue for the WinUI app, amber for the Win32 app, green for the
+console build. Regenerate them with `python tools/make-icons.py`.
+
+<p align="center">
+  <img src="docs/icons/winsweep-128.png" width="96" alt="WinUI icon">
+  <img src="docs/icons/winsweep-win32-128.png" width="96" alt="Win32 icon">
+  <img src="docs/icons/winsweep-console-128.png" width="96" alt="Console icon">
+</p>
 
 ## Install
 
@@ -105,7 +118,7 @@ winget install BrechtSanders.WinLibs.POSIX.UCRT   :: or use MSVC Build Tools
 
 ### Option 2 — Win32 app, single file
 
-No runtime, no installer, 230 KB.
+No runtime, no installer, about 330 KB.
 
 ```bat
 build\build-win32-mingw.bat   :: MinGW-w64
@@ -206,7 +219,25 @@ src/
   native/tcscan.cpp          FindFirstFileEx scanner, built into a DLL
   batch/TempCleaner.bat      console version, pure cmd + one embedded PowerShell scanner
 docs/screenshots/            the images above
+docs/icons/                  the icon family and its source SVGs
+tools/make-icons.py          regenerates every icon and store tile
+tests/                       PowerShell test suite, also run by CI
 legacy/                      earlier cleaners this catalogue grew out of
+```
+
+## Versioning and releases
+
+`<Version>` in `src/winui/TempCleanerWinUI.csproj` is the single source of truth.
+`tests/Test-Version.ps1` fails the build if the Win32 app, its resource script or the console
+build disagree, and the release workflow reads that number rather than a tag: bump it, push to
+`main`, and CI builds, tests, packages and publishes the release itself.
+
+## Tests
+
+```powershell
+.	ests\Test-Version.ps1        # every build reports the same version
+.	ests\Test-NativeScanner.ps1  # native walker vs managed measurements
+.	ests\Test-Catalog.ps1        # catalogue shape, and drift between the three builds
 ```
 
 ### Notes for contributors

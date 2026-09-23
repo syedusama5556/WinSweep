@@ -1666,7 +1666,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR cmdLine, int show) {
     c.lpfnWndProc = proc;
     c.hInstance = hi;
     c.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    c.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    // Resource id 1 is the app icon from app.rc; fall back when built without it.
+    c.hIcon = LoadIconW(hi, MAKEINTRESOURCEW(1));
+    if (!c.hIcon) c.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    c.hIconSm = (HICON)LoadImageW(hi, MAKEINTRESOURCEW(1), IMAGE_ICON,
+                                  GetSystemMetrics(SM_CXSMICON),
+                                  GetSystemMetrics(SM_CYSMICON), 0);
+    if (!c.hIconSm) c.hIconSm = c.hIcon;
     c.hbrBackground = CreateSolidBrush(C_BG);
     c.lpszClassName = L"TempCleanerProWindow";
     if (!RegisterClassExW(&c)) return 1;
