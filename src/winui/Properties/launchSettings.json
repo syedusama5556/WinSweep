@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "TempCleanerWinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "TempCleanerWinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="TempCleanerWinUI.Pages.AboutPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TempCleanerWinUI.Pages"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="24,16,24,16">
+        <StackPanel MaxWidth="820" Spacing="18">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="How it works" />
+
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Four steps" />
+                <TextBlock Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap">
+                    1.  Pick a category on the left.<LineBreak />
+                    2.  Tick the rows you want cleared, or apply a preset.<LineBreak />
+                    3.  Press Measure sizes to see what each row really holds.<LineBreak />
+                    4.  Press Clean selected. Progress and reclaimed space are shown live.
+                </TextBlock>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Risk labels" />
+                <InfoBar
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="Regenerated automatically. Nothing you own is lost."
+                    Severity="Success"
+                    Title="Safe" />
+                <InfoBar
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="Harmless, but there is a side effect such as a slower first launch or a re-login."
+                    Severity="Warning"
+                    Title="Care" />
+                <InfoBar
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="Forces long rebuilds or downloads, erases an audit trail, or needs a reboot. Never ticked by a preset except Deep."
+                    Severity="Error"
+                    Title="Risk" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Presets" />
+                <TextBlock Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap">
+                    <Run FontWeight="SemiBold" Text="Safe set" /> — only rows that regenerate on their own.<LineBreak />
+                    <Run FontWeight="SemiBold" Text="Standard set" /> — safe rows plus ones with a small side effect.<LineBreak />
+                    <Run FontWeight="SemiBold" Text="Deep set" /> — everything except the Maintenance tools.
+                </TextBlock>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Project sweeps" />
+                <TextBlock Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap">
+                    Sweeps only delete folders that sit next to a real project marker such as package.json,
+                    Cargo.toml, pubspec.yaml, build.gradle or a .csproj file, so unrelated folders named
+                    build or target are left alone. Set the folder they search on the Developer page.
+                </TextBlock>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Disk Cleanup preset" />
+                <TextBlock Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap">
+                    Run cleanmgr /sageset:50 once in an administrator terminal to choose what the
+                    Maintenance entry clears. After that it runs silently.
+                </TextBlock>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Developer" />
+                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="infusiblecoder" />
+                <TextBlock
+                    Margin="0,8,0,0"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Catalogue based on TempCleaner v1.5.0 by Prashant Thakur."
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

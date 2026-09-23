@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------- build output
+[Bb]in/
+[Oo]bj/
+dist/
+src/winui/native/
+*.exe
+*.dll
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.o
+*.a
+
+# ------------------------------------------------------------------ .NET / IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+project.assets.json
+*.nuget.g.props
+*.nuget.g.targets
+msbuild.log
+
+# ---------------------------------------------------------------- app settings
+TempCleaner.cfg
+selection*.cfg
+
+# ---------------------------------------------------------------------- Windows
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ------------------------------------------------- unrelated local project data
+ivy online/
+build-folders-found.txt
