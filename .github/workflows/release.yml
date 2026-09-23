@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, for example v2.0.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, package and publish
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "${{ github.event.inputs.version }}"
+          } else {
+            "${{ github.ref_name }}"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "plain=$($version.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+          Write-Host "Building $version"
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Build native scanner and Win32 app (MSVC)
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          call build\build-native.bat || exit /b 1
+          call build\build-win32-msvc.bat || exit /b 1
+
+      - name: Build WinUI 3 app
+        shell: cmd
+        run: dotnet build src\winui -c Release -r win-x64 -p:Version=${{ steps.version.outputs.plain }}
+
+      - name: Run the test suite
+        shell: pwsh
+        run: |
+          .\tests\Test-NativeScanner.ps1
+          .\tests\Test-Catalog.ps1
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory release -Force | Out-Null
+
+          # WinUI: the whole folder, it is self contained and needs no runtime.
+          $winui = "src\winui\bin\Release\net9.0-windows10.0.26100.0\win-x64"
+          Copy-Item README.md, LICENSE $winui
+          Compress-Archive -Path "$winui\*" -DestinationPath "release\WinSweep-WinUI-$v-win-x64.zip"
+
+          # Win32: one exe, no runtime at all.
+          New-Item -ItemType Directory staging\win32 -Force | Out-Null
+          Copy-Item dist\TempCleanerPro.exe, README.md, LICENSE staging\win32
+          Compress-Archive -Path "staging\win32\*" -DestinationPath "release\WinSweep-Win32-$v.zip"
+
+          # Console: the batch file on its own.
+          New-Item -ItemType Directory staging\console -Force | Out-Null
+          Copy-Item src\batch\TempCleaner.bat, README.md, LICENSE staging\console
+          Compress-Archive -Path "staging\console\*" -DestinationPath "release\WinSweep-Console-$v.zip"
+
+          Get-FileHash release\*.zip -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content release\SHA256SUMS.txt -Encoding ascii
+
+          Get-ChildItem release | Format-Table Name, @{n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } }
+
+      - name: Write the release notes
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          @"
+          ## WinSweep $v
+
+          Pick what goes. Watch it go.
+
+          ### Downloads
+
+          | File | What it is | Needs |
+          |---|---|---|
+          | ``WinSweep-WinUI-$v-win-x64.zip`` | The full Fluent app. Unzip anywhere and run ``TempCleanerWinUI.exe``. | Windows 10 1809+. Nothing else: self contained, no .NET install, no MSIX, no Developer Mode. |
+          | ``WinSweep-Win32-$v.zip`` | Single-file Win32 app, about 230 KB. | Windows 7+. No runtime. |
+          | ``WinSweep-Console-$v.zip`` | The console version, one .bat file. | Any Windows with cmd. |
+
+          Verify a download against ``SHA256SUMS.txt``:
+
+          ``````powershell
+          Get-FileHash .\WinSweep-WinUI-$v-win-x64.zip -Algorithm SHA256
+          ``````
+
+          ### Reminders
+
+          - Nothing is scanned until you press **Measure sizes**, and nothing is deleted until you press **Clean**.
+          - Rows marked **Risk** are never ticked by a preset other than Deep, and the confirmation dialog names every one.
+          - Run as administrator to include system locations such as ``C:\Windows\Temp`` and the Windows Update cache.
+
+          See the [wiki](https://github.com/${{ github.repository }}/wiki) for the full catalogue and usage notes.
+          "@ | Set-Content release\NOTES.md -Encoding utf8
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          gh release create $v `
+            --title "WinSweep $v" `
+            --notes-file release\NOTES.md `
+            release\WinSweep-WinUI-$v-win-x64.zip `
+            release\WinSweep-Win32-$v.zip `
+            release\WinSweep-Console-$v.zip `
+            release\SHA256SUMS.txt

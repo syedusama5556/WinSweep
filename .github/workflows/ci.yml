@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**/*.md"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build all three apps and run the test suite
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      # The native scanner and the Win32 app both need a C++ toolchain. vswhere
+      # ships with every runner image, so the VS install path is never hardcoded.
+      - name: Build native scanner and Win32 app (MSVC)
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          if not defined VSPATH (
+            echo ERROR: no Visual Studio installation with the C++ tools was found.
+            exit /b 1
+          )
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          call build\build-native.bat || exit /b 1
+          call build\build-win32-msvc.bat || exit /b 1
+
+      - name: Build WinUI 3 app
+        shell: cmd
+        run: dotnet build src\winui -c Release -r win-x64
+
+      # An unpackaged publish silently drops these, and the app then crashes on
+      # startup, so the build is only good if they are all present.
+      - name: Check the WinUI output is complete
+        shell: pwsh
+        run: |
+          $out = "src\winui\bin\Release\net9.0-windows10.0.26100.0\win-x64"
+          $required = @(
+            "TempCleanerWinUI.exe",
+            "TempCleanerWinUI.pri",
+            "MainWindow.xbf",
+            "Pages\CategoryPage.xbf",
+            "Microsoft.UI.Xaml.dll",
+            "native\tcscan.dll"
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $out $_)) }
+          if ($missing) {
+            Write-Host "Missing from the build output:`n  $($missing -join "`n  ")" -ForegroundColor Red
+            exit 1
+          }
+          Write-Host "WinUI output looks complete."
+
+      - name: Test the native scanner
+        shell: pwsh
+        run: .\tests\Test-NativeScanner.ps1
+
+      - name: Test the cleanup catalogue
+        shell: pwsh
+        run: .\tests\Test-Catalog.ps1
+
+      - name: Upload WinUI build
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinSweep-WinUI-win-x64
+          path: src/winui/bin/Release/net9.0-windows10.0.26100.0/win-x64/
+          retention-days: 14
+
+      - name: Upload Win32 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinSweep-Win32
+          path: |
+            dist/TempCleanerPro.exe
+            src/batch/TempCleaner.bat
+          retention-days: 14
+
+  mingw:
+    name: Verify the MinGW build path still works
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc
+          path-type: inherit
+
+      - name: Build the native scanner and Win32 app with g++
+        shell: cmd
+        run: |
+          set "PATH=%RUNNER_TEMP%\msys64\ucrt64\bin;C:\msys64\ucrt64\bin;%PATH%"
+          call build\build-native.bat || exit /b 1
+          call build\build-win32-mingw.bat || exit /b 1
+
+      - name: Test the native scanner
+        shell: pwsh
+        run: .\tests\Test-NativeScanner.ps1
